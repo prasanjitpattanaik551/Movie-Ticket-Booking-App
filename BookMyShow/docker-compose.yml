@@ -1,0 +1,60 @@
+name: bookmyshow
+
+# Start:  docker compose up -d --build
+# Logs:   docker compose logs -f app
+# Stop:   docker compose down        (add -v to also delete the database data)
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: bms-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?Copy .env.example to .env and set DB_PASSWORD}
+      MYSQL_DATABASE: bms_db
+    ports:
+      # Host port 3308 so it does not clash with another MySQL on 3306/3307
+      - "127.0.0.1:3308:3306"
+    volumes:
+      - bms-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - bms-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bms-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      # Change APP_PORT in .env if 8081 is already used (e.g. by another project)
+      - "${APP_PORT:-8081}:8081"
+    environment:
+      # Overrides spring.datasource.url from application.properties
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bms_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (at least 32 characters)}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      JAVA_TOOL_OPTIONS: "-Xmx512m"
+    restart: unless-stopped
+    networks:
+      - bms-network
+
+volumes:
+  bms-mysql-data:
+
+networks:
+  bms-network:
+    driver: bridge
+
+  
